@@ -198,6 +198,9 @@ static int pipenos_open(struct inode *inode, struct file *filp)
 
 	pipenos = container_of(inode->i_cdev, struct pipenos_dev, cdev);
 	filp->private_data = pipenos; /* for other methods */
+	
+	if ( (filp->f_flags & O_ACCMODE) != O_RDONLY || (filp->f_flags & O_ACCMODE) != O_WRONLY)
+		return -EPERM;
 
 	return 0;
 }
