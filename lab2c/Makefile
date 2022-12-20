@@ -15,5 +15,10 @@ modules:
 
 endif
 
+test:
+	$(CC) pisaci.c -o pisaci -Wall
+	$(CC) citaci.c -o citaci -Wall
+
 clean:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
+	rm -f pisaci citaci

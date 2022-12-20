@@ -199,8 +199,6 @@ static int pipenos_open(struct inode *inode, struct file *filp)
 {
 	struct pipenos_dev *pipenos; /* device information */
 
-
-	
 	pipenos = container_of(inode->i_cdev, struct pipenos_dev, cdev);
 	filp->private_data = pipenos; /* for other methods */
 	
