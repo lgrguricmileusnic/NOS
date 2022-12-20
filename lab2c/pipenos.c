@@ -281,6 +281,9 @@ static ssize_t pipenos_write(struct file *filp, const char __user *ubuf,
 	struct kfifo *fifo = &buffer->fifo;
 	unsigned int copied;
 
+	if (count > BUFFER_SIZE)
+		return -1;
+
 	if (mutex_lock_interruptible(&buffer->lock))
 		return -ERESTARTSYS;
 

@@ -3,17 +3,28 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <time.h>
 
 #define NUM_THREADS 2
+#define BUFFER_SIZE 64
 
 void *thread_job(void *vargp)
 {
-    int *myid = (int *)vargp;
+    srand(time(NULL));
 
+    int myid = *(int *)vargp;
+    int t;
+    int fd = open("/dev/pipenos", O_WRONLY);
+    char buf[BUFFER_SIZE];
     for(;;)
     {
-        printf("Thread %d: Spavam 5s\n", *myid);
-        sleep(1);
+        printf("Thread %d: Pisem...\n", myid);
+        buf[0] = '0' + myid;
+        int nbytes = write(fd, buf, 1);
+        printf("Thread %d: Upisao %d znakova %c\n", myid, nbytes, buf[0]);
+        t = rand() % 5 + 1;
+        printf("Thread %d: Spavam %ds\n", myid, t);
+        sleep(t);
     }
     
     return NULL;
@@ -24,6 +35,7 @@ int main(int argc, char const *argv[])
     
     int fd = open("/dev/pipenos", O_RDWR);
     pthread_t threads[NUM_THREADS];
+    int tids[NUM_THREADS];
 
     if (fd == -1)
     {
@@ -45,7 +57,10 @@ int main(int argc, char const *argv[])
 
     // Let us create three threads
     for (int i = 0; i < NUM_THREADS; i++)
-        pthread_create(&threads[i], NULL, thread_job, (void *)&i);
+    {
+        tids[i] = i;
+        pthread_create(&threads[i], NULL, thread_job, (void *)&tids[i]);
+    }
 
     pthread_exit(NULL);
     return 0;

@@ -18,7 +18,7 @@ void *thread_job(void *vargp)
     char buf[BUFFER_SIZE];
     for(;;)
     {
-        print("Thread %d: Citam...\n");
+        printf("Thread %d: Citam...\n", myid);
         int nbytes = read(fd, buf, 1);
         printf("Thread %d: Procitao %s\n", myid, buf);
         t = rand() % 5 + 1;
