@@ -1,6 +1,6 @@
 #!/bin/sh
-module="shofer"
-device="shofer"
+module="pipenos"
+device="pipenos"
 
 /sbin/rmmod $module || exit 1
 

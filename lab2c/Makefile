@@ -3,7 +3,7 @@
 ifneq ($(KERNELRELEASE),)
 # call from kernel build system
 
-obj-m	:= shofer.o
+obj-m	:= pipenos.o
 
 else
 

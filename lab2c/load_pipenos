@@ -1,6 +1,6 @@
 #!/bin/sh
-module="shofer"
-device="shofer"
+module="pipenos"
+device="pipenos"
 mode="666"
 
 /sbin/insmod ./$module.ko $* || exit 1

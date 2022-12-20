@@ -169,7 +169,6 @@ static struct pipenos_dev *pipenos_create(dev_t dev_no,
 	
 	init_waitqueue_head(&(pipenos->inq));
 	init_waitqueue_head(&(pipenos->outq));
-	init_MUTEX(&(pipenos->sem));
 
 	cdev_init(&pipenos->cdev, fops);
 	pipenos->cdev.owner = THIS_MODULE;
@@ -226,18 +225,40 @@ static ssize_t pipenos_read(struct file *filp, char __user *ubuf, size_t count,
 
 	dump_buffer(buffer);
 
+	while (kfifo_len(fifo) == 0) { /* nothing to read */
+		mutex_unlock(&buffer->lock);
+		if (filp->f_flags & O_NONBLOCK)
+			return -EAGAIN;
+		LOG("pipenos:read: waiting for something to read");
+		if (wait_event_interruptible(pipenos->inq, (kfifo_len(fifo) > 0)))
+			return -ERESTARTSYS; /* signal: tell the fs layer to handle it */
+		/* otherwise loop, but first reacquire the lock */
+	if (mutex_lock_interruptible(&buffer->lock))
+		return -ERESTARTSYS;
+	}
+	if (kfifo_len(fifo) < count)
+		count = kfifo_len(fifo);
+
+	LOG("pipenos:read: reading %d elements", count);
 	retval = kfifo_to_user(fifo, (char __user *) ubuf, count, &copied);
+
 	if (retval)
-		printk(KERN_NOTICE "pipenos:kfifo_to_user failed\n");
+	{
+		klog(KERN_WARNING, "kfifo_from_user failed\n");
+		mutex_unlock(&buffer->lock);
+		return -EFAULT;
+	}
 	else
 		retval = copied;
 
-	dump_buffer(buffer);
-
 	mutex_unlock(&buffer->lock);
 
+	/* finally, awake any writers and return */
+	wake_up_interruptible(&pipenos->outq);
+	LOG("pipenos:read: read %d elements", retval);
 	return retval;
 }
+
 
 /* Write count bytes from user space ubuf to buffer */
 static ssize_t pipenos_write(struct file *filp, const char __user *ubuf,
@@ -253,19 +274,38 @@ static ssize_t pipenos_write(struct file *filp, const char __user *ubuf,
 		return -ERESTARTSYS;
 
 	dump_buffer(buffer);
-
+	LOG("pipenos:write: trying to write %d bytes", count);
+	while (kfifo_avail(fifo) < count) { /* no space to write */
+		mutex_unlock(&buffer->lock);
+		if (filp->f_flags & O_NONBLOCK)
+			return -EAGAIN;
+		LOG("pipenos:write: waiting for space to free");
+		if (wait_event_interruptible(pipenos->outq, (kfifo_avail(fifo) >= count)))
+			return -ERESTARTSYS; /* signal: tell the fs layer to handle it */
+		/* otherwise loop, but first reacquire the lock */
+		if (mutex_lock_interruptible(&buffer->lock))
+			return -ERESTARTSYS;
+	}
+	LOG("pipenos:write: %d free bytes in kfifo");
 	retval = kfifo_from_user(fifo, (char __user *) ubuf, count, &copied);
 	if (retval)
-		printk(KERN_NOTICE "pipenos:kfifo_from_user failed\n");
+	{
+		mutex_unlock(&buffer->lock);
+		printk(KERN_NOTICE "pipenos:write:kfifo_from_user failed");
+		return -EFAULT;
+	}
 	else
 		retval = copied;
-
+	LOG("pipenos:write: wrote %d elements", retval);
 	dump_buffer(buffer);
 
 	mutex_unlock(&buffer->lock);
+	wake_up_interruptible(&pipenos->inq);  /* blocked in read() and select() */
+
 
 	return retval;
 }
+
 
 static void dump_buffer(struct buffer *b)
 {
