@@ -28,10 +28,14 @@
 
 /* Buffer size */
 static int buffer_size = BUFFER_SIZE;
+static int tcount_max = 20;
 
 /* Parameter buffer_size can be given at module load time */
 module_param(buffer_size, int, S_IRUGO);
 MODULE_PARM_DESC(buffer_size, "Buffer size in bytes, must be a power of 2");
+module_param(tcount_max, int, S_IRUGO);
+MODULE_PARM_DESC(tcount_max, "Maximum number of threads");
+
 
 MODULE_AUTHOR(AUTHOR);
 MODULE_LICENSE(LICENSE);
@@ -94,8 +98,8 @@ static int __init pipenos_module_init(void)
 	if (!pipenos)
 		goto no_driver;
 
-	printk(KERN_NOTICE "Module 'pipenos' initialized with major=%d, minor=%d\n",
-		MAJOR(dev_no), MINOR(dev_no));
+	printk(KERN_NOTICE "Module 'pipenos' initialized with major=%d, minor=%d\n and buffer_size=%d, tcount_max=%d\n",
+		MAJOR(dev_no), MINOR(dev_no), buffer_size, tcount_max);
 
 	Pipenos = pipenos;
 	Dev_no = dev_no;
@@ -166,7 +170,7 @@ static struct pipenos_dev *pipenos_create(dev_t dev_no,
 	}
 	memset(pipenos, 0, sizeof(struct pipenos_dev));
 	pipenos->buffer = buffer;
-	
+	pipenos->tcount = 0;
 	init_waitqueue_head(&(pipenos->inq));
 	init_waitqueue_head(&(pipenos->outq));
 
@@ -195,10 +199,17 @@ static int pipenos_open(struct inode *inode, struct file *filp)
 {
 	struct pipenos_dev *pipenos; /* device information */
 
+
+	
 	pipenos = container_of(inode->i_cdev, struct pipenos_dev, cdev);
 	filp->private_data = pipenos; /* for other methods */
 	
-	if ( (filp->f_flags & O_ACCMODE) != O_RDONLY || (filp->f_flags & O_ACCMODE) != O_WRONLY)
+	if (pipenos->tcount >= tcount_max)
+		return -1;
+	
+	pipenos->tcount++;
+
+	if ( ((filp->f_flags & O_ACCMODE) != O_RDONLY) && ((filp->f_flags & O_ACCMODE) != O_WRONLY))
 		return -EPERM;
 
 	return 0;
@@ -207,6 +218,8 @@ static int pipenos_open(struct inode *inode, struct file *filp)
 /* Called when a process performs "close" operation */
 static int pipenos_release(struct inode *inode, struct file *filp)
 {
+	struct pipenos_dev *pipenos = filp->private_data;
+	pipenos->tcount--;
 	return 0; /* nothing to do; could not set this function in fops */
 }
 
@@ -286,7 +299,7 @@ static ssize_t pipenos_write(struct file *filp, const char __user *ubuf,
 		if (mutex_lock_interruptible(&buffer->lock))
 			return -ERESTARTSYS;
 	}
-	LOG("pipenos:write: %d free bytes in kfifo");
+	LOG("pipenos:write: %d free bytes in kfifo", kfifo_avail(fifo));
 	retval = kfifo_from_user(fifo, (char __user *) ubuf, count, &copied);
 	if (retval)
 	{
